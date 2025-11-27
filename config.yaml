@@ -1,0 +1,80 @@
+# GPT MCP Server Configuration
+# =============================
+# 설계: Kevin Zhang (DevOps Lead)
+#
+# 이 파일을 수정하여 서버 동작을 커스터마이즈하세요.
+# 환경 변수로 오버라이드 가능 (GPT_MCP_ 접두사 사용)
+
+# 환경 설정
+environment: development
+
+# 서버 설정
+server:
+  host: "127.0.0.1"
+  port: 8765
+  debug: false
+  log_level: "INFO"
+
+# 파일시스템 접근 설정
+filesystem:
+  # 허용된 디렉토리 (이 디렉토리 내의 파일만 접근 가능)
+  # 중요: 보안을 위해 필요한 디렉토리만 추가하세요
+  allowed_directories:
+    - "C:\\Users\\sshin\\Documents"
+    # - "C:\\Projects"  # 필요시 주석 해제
+
+  # 파일 크기 제한 (바이트)
+  max_file_size: 10485760  # 10MB
+
+  # 디렉토리 목록 최대 항목 수
+  max_directory_items: 1000
+
+  # 검색 결과 최대 개수
+  max_search_results: 100
+
+  # 최대 읽기 라인 수
+  max_lines: 10000
+
+  # 허용된 파일 확장자 (빈 리스트 = 모든 확장자 허용)
+  allowed_extensions: []
+  # allowed_extensions:
+  #   - ".py"
+  #   - ".js"
+  #   - ".json"
+  #   - ".md"
+  #   - ".txt"
+
+  # 쓰기 모드 (기본: 비활성화 - 읽기 전용)
+  write_enabled: false
+
+  # 심볼릭 링크 따라가기 (보안상 비활성화 권장)
+  follow_symlinks: false
+
+# 보안 설정
+security:
+  # 차단할 파일 패턴 (정규식)
+  blocked_file_patterns:
+    - "^\\.env$"
+    - "^\\.env\\..+$"
+    - ".*secret.*"
+    - ".*credential.*"
+    - ".*password.*"
+    - ".*\\.pem$"
+    - ".*\\.key$"
+    - ".*api[_-]?key.*"
+    - ".*token.*\\.json$"
+
+  # 차단할 디렉토리 패턴
+  blocked_directories:
+    - "\\.git"
+    - "\\.ssh"
+    - "node_modules"
+    - "__pycache__"
+    - "\\.venv"
+    - "venv"
+
+  # 민감 정보 마스킹 (API 키, 비밀번호 등)
+  mask_sensitive_content: true
+
+  # Rate Limiting (초당 요청 수, 0 = 무제한)
+  rate_limit: 60
