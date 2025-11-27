@@ -253,6 +253,72 @@ class FileOperations:
 
         return self.security.get_safe_file_info(path)
 
+
+    async def write_file(
+        self,
+        file_path: str,
+        content: str,
+        encoding: str = "utf-8",
+        create_dirs: bool = False
+    ) -> Dict[str, Any]:
+        """파일 쓰기/생성"""
+        self.security.check_write_permission()
+        path = self.security.validate_path(file_path)
+        
+        if create_dirs and not path.parent.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+        
+        if not path.parent.exists():
+            raise FileNotFoundError(f"Parent directory not found: {path.parent}")
+        
+        existed = path.exists()
+        
+        try:
+            async with aiofiles.open(path, mode='w', encoding=encoding) as f:
+                await f.write(content)
+            
+            stat_info = path.stat()
+            return {
+                "path": str(path),
+                "size": stat_info.st_size,
+                "lines": content.count('\n') + 1,
+                "encoding": encoding,
+                "created": not existed,
+                "success": True
+            }
+        except PermissionError:
+            raise AccessDeniedError(f"Permission denied: {file_path}")
+
+    async def create_directory(self, dir_path: str, parents: bool = True) -> Dict[str, Any]:
+        """디렉토리 생성"""
+        self.security.check_write_permission()
+        path = self.security.validate_path(dir_path)
+        
+        if path.exists():
+            return {"path": str(path), "created": False, "exists": True, "success": True}
+        
+        try:
+            path.mkdir(parents=parents, exist_ok=True)
+            return {"path": str(path), "created": True, "exists": True, "success": True}
+        except PermissionError:
+            raise AccessDeniedError(f"Permission denied: {dir_path}")
+
+    async def delete_file(self, file_path: str) -> Dict[str, Any]:
+        """파일 삭제"""
+        self.security.check_write_permission()
+        path = self.security.validate_path(file_path)
+        
+        if not path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
+        if not path.is_file():
+            raise ValueError(f"Not a file: {file_path}")
+        
+        try:
+            path.unlink()
+            return {"path": str(path), "deleted": True, "success": True}
+        except PermissionError:
+            raise AccessDeniedError(f"Permission denied: {file_path}")
+
     async def search_files(
         self,
         directory: str,
@@ -345,8 +411,8 @@ class MCPServer:
     # 서버 정보
     SERVER_INFO = {
         "name": "gpt-filesystem-mcp",
-        "version": "1.0.0",
-        "description": "Local filesystem access for GPT Desktop"
+        "version": "1.1.0",
+        "description": "Local filesystem access for GPT Desktop (read/write)"
     }
 
     def __init__(self, config: AppConfig):
@@ -375,7 +441,7 @@ class MCPServer:
 
     def _define_tools(self) -> List[MCPTool]:
         """MCP Tools 정의"""
-        return [
+        tools = [
             MCPTool(
                 name="list_files",
                 description="디렉토리의 파일 및 폴더 목록을 조회합니다. 허용된 디렉토리 내에서만 작동합니다.",
@@ -478,6 +544,49 @@ class MCPServer:
                 }
             ),
         ]
+        
+        if self.config.filesystem.write_enabled:
+            tools.extend([
+                MCPTool(
+                    name="write_file",
+                    description="파일을 생성하거나 덮어씁니다.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "파일 경로"},
+                            "content": {"type": "string", "description": "파일 내용"},
+                            "encoding": {"type": "string", "default": "utf-8"},
+                            "create_dirs": {"type": "boolean", "default": False}
+                        },
+                        "required": ["path", "content"]
+                    }
+                ),
+                MCPTool(
+                    name="create_directory",
+                    description="디렉토리를 생성합니다.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "디렉토리 경로"},
+                            "parents": {"type": "boolean", "default": True}
+                        },
+                        "required": ["path"]
+                    }
+                ),
+                MCPTool(
+                    name="delete_file",
+                    description="파일을 삭제합니다.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "path": {"type": "string", "description": "파일 경로"}
+                        },
+                        "required": ["path"]
+                    }
+                ),
+            ])
+        
+        return tools
 
     async def handle_initialize(self, params: Dict) -> Dict:
         """MCP initialize 핸들러"""
@@ -550,6 +659,28 @@ class MCPServer:
                 }
                 return {"content": [{"type": "text", "text": json.dumps(result, indent=2, ensure_ascii=False)}]}
 
+            elif tool_name == "write_file":
+                result = await self.file_ops.write_file(
+                    file_path=arguments["path"],
+                    content=arguments["content"],
+                    encoding=arguments.get("encoding", "utf-8"),
+                    create_dirs=arguments.get("create_dirs", False)
+                )
+                return {"content": [{"type": "text", "text": json.dumps(result, indent=2, ensure_ascii=False)}]}
+
+            elif tool_name == "create_directory":
+                result = await self.file_ops.create_directory(
+                    dir_path=arguments["path"],
+                    parents=arguments.get("parents", True)
+                )
+                return {"content": [{"type": "text", "text": json.dumps(result, indent=2, ensure_ascii=False)}]}
+
+            elif tool_name == "delete_file":
+                result = await self.file_ops.delete_file(
+                    file_path=arguments["path"]
+                )
+                return {"content": [{"type": "text", "text": json.dumps(result, indent=2, ensure_ascii=False)}]}
+
             else:
                 raise ValueError(f"Unknown tool: {tool_name}")
 
@@ -614,7 +745,7 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
     app = FastAPI(
         title="GPT MCP Server",
         description="MCP Server for GPT Desktop - Local Filesystem Access",
-        version="1.0.0",
+        version="1.1.0",
         lifespan=lifespan
     )
 
@@ -633,7 +764,8 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
         return {
             "status": "running",
             "server": MCPServer.SERVER_INFO,
-            "protocol_version": MCPServer.PROTOCOL_VERSION
+            "protocol_version": MCPServer.PROTOCOL_VERSION,
+            "write_enabled": config.filesystem.write_enabled
         }
 
     @app.get("/health")
@@ -723,11 +855,12 @@ def main():
 
     # 서버 시작 정보
     print("\n" + "=" * 60)
-    print("  GPT MCP Server")
+    print("  GPT MCP Server v1.1.0")
     print("=" * 60)
     print(f"  Host: {config.server.host}")
     print(f"  Port: {config.server.port}")
     print(f"  Debug: {config.server.debug}")
+    print(f"  Write Enabled: {config.filesystem.write_enabled}")
     print("-" * 60)
     print("  Allowed Directories:")
     for d in config.filesystem.allowed_directories:

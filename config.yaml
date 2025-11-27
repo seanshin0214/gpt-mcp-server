@@ -45,7 +45,7 @@ filesystem:
   #   - ".txt"
 
   # 쓰기 모드 (기본: 비활성화 - 읽기 전용)
-  write_enabled: false
+  write_enabled: true
 
   # 심볼릭 링크 따라가기 (보안상 비활성화 권장)
   follow_symlinks: false
