@@ -773,6 +773,16 @@ def create_app(config: Optional[AppConfig] = None) -> FastAPI:
         """헬스체크"""
         return {"status": "healthy"}
 
+    @app.get("/mcp")
+    async def mcp_get_endpoint(request: Request):
+        """MCP GET 엔드포인트 - tools/list 반환"""
+        result = await mcp_server.handle_list_tools()
+        return JSONResponse(content={
+            "jsonrpc": "2.0",
+            "result": result,
+            "id": None
+        })
+
     @app.post("/mcp")
     async def mcp_endpoint(request: Request):
         """MCP JSON-RPC 엔드포인트"""
